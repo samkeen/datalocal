@@ -1,0 +1,9 @@
+{
+    "name": "rere",
+    "version": "0.0.1",
+    "private": true,
+    "dependencies": {
+        "mongojs":"0.14.1",
+        "underscore":"1.7.0"
+    }
+}
