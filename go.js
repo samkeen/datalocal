@@ -2,6 +2,7 @@ var _ = require('underscore');
 var http = require('http');
 var mongojs = require('mongojs');
 var fs = require('fs');
+var Set = require('./lib/set.js');
 
 var app_path = __dirname;
 var config_path = app_path + "/config/config.json";
@@ -22,6 +23,9 @@ var options = {
     path: '/business-licenses/'
 };
 
+var since_date = "2014-09-10";
+var records_added = [];
+
 callback = function(response) {
     var str = '';
 
@@ -33,42 +37,66 @@ callback = function(response) {
     //the whole response has been received, so we just print it out here
     response.on('end', function () {
         var resp = JSON.parse(str);
+        var records_to_update = resp.results.length;
+        console.log("UPDATING " + records_to_update + " RECORDS");
+        /**
+         * collect the date added fields so we can determine the max dateAdded value seen
+         * for this request
+         */
+
+        var dates_added_set = new Set();
 
         /**
          * @TODO add meta data from `resp` to audit table
          */
         _.each(resp.results, function(result){
-            console.log("Saving: [" + result.DateAdded + "]" + result.BusinessName);
+
+            console.log("Upserting: [" + result.DateAdded + "]" + result.BusinessName);
+            dates_added_set.add(result.DateAdded);
 
             /**
              * perform upsert so we do not duplicate entries
-             * @TODO on insert, $id is returned, record this in audit log
              */
-            db.demo_test.update({Privacyid: result.Privacyid}, result, {upsert:true}, function(err, save_result){
+            db.demo_test.update({Privacyid: result.Privacyid, GISAddressID: result.GISAddressID}, result, {upsert:true, safe:true}, function(err, save_result){
+                records_to_update--;
                 if(err) {
                     console.log(err);
                 } else {
+                    if(save_result.updatedExisting) {
+                        console.log("Not a new record");
+                    } else {
+                        records_added.push({
+                            id: save_result.upserted,
+                            Privacyid: result.Privacyid,
+                            GISAddress: result.GISAddressID
+                        });
+                        console.log("Is a new record");
+                    }
                     console.log(save_result);
                 }
-
+                if(records_to_update == 0) {
+                    var max_date_added = dates_added_set.items.sort().pop();
+                    db.audit.save({
+                        run_date: new Date().toISOString(),
+                        since_date_utilized: since_date,
+                        max_date_added_seen: max_date_added,
+                        records_processed: resp.results.length,
+                        records_added: records_added,
+                        records_added_count: records_added.length
+                    });
+                    console.log("Last record Upserted, closing db connection")
+                    db.close();
+                }
             });
-
-
         });
-        /**
-         * @TODO Add Privacyid for all and $_id's for those created
-         */
-        db.audit.save({date: new Date().toISOString(), records_processed: resp.results.length});
-
     });
 }
 
 try {
     //// Get the date last checked, add one day
     //var dateSince = lastDateSince + 1 day;
-    options.path = options.path + "?since=2014-09-01";
-
-    http.request(options, callback).end();
+    options.path = options.path + "?since=" + since_date;
+    var request = http.request(options, callback).end();
 } catch (e) {
     console.log(e);
 }
