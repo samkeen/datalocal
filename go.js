@@ -18,7 +18,7 @@ var db_uri = db_uri_template({
 
 var db = mongojs(db_uri, ['demo_test', 'audit'])
 
-var options = {
+var http_request_options = {
     host: 'api.civicapps.org',
     path: '/business-licenses/'
 };
@@ -27,6 +27,7 @@ var records_added = [];
 var run_date = new Date().toISOString();
 var from_date_param;
 var to_date_param;
+var since_date_param;
 
 callback = function(response) {
     var str = '';
@@ -157,25 +158,22 @@ try {
         to_date_param = cmd_args.to;
         console.log("Using commandline overrides for from[" + from_date_param
             + "] and to[" + to_date_param + "] dates");
-        options.path = options.path + "?from=" + from_date_param + "&to=" + to_date_param;
-        http.request(options, callback).end();
+        http_request_options.path = http_request_options.path + "?from=" + from_date_param + "&to=" + to_date_param;
+        http.request(http_request_options, callback).end();
     } else {
         db.audit.find().sort({max_date_added_seen: -1}).limit(1, function(err, result){
             var result = result.pop();
-            from_date_param = formatDate(daysAgo(60));
-            var tomorrow =  new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            to_date_param = formatDate(tomorrow);
-            console.log("using to date param: " + to_date_param);
+            since_date_param = formatDate(daysAgo(30));
             if(result && result.max_date_added_seen) {
                 console.log("Found max_date_added_seen of: '" + result.max_date_added_seen
                 + "' From get records run on: '" + result.run_date + "'");
-                from_date_param = formatDate(new Date(result.max_date_added_seen));
+                since_date_param = formatDate(new Date(result.max_date_added_seen));
             } else {
-                console.log("Found no previous get records entry in audit collection, using from date: " + from_date_param);
+                console.warn("Found no previous get records entry in audit collection, using ?since date param: " + since_date_param);
             }
-            options.path = options.path + "?from=" + from_date_param + "&to=" + to_date_param;
-            http.request(options, callback).end();
+            http_request_options.path = http_request_options.path + "?since=" + since_date_param;
+            console.info("Request will be to path: " + http_request_options.path)
+            http.request(http_request_options, callback).end();
         });
     }
 
