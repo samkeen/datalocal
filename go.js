@@ -104,7 +104,9 @@ callback = function(response) {
                             records_added: records_added,
                             records_added_count: records_added.length
                         });
-                        console.log("Last record Upserted, closing db connection")
+                        console.log("Last record Upserted, adding index {DataAdded: -1}")
+                        db.demo_test.ensureIndex({DataAdded: -1});
+                        console.log("closing db connection")
                         db.close();
                     }
                 });
